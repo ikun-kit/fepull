@@ -1,0 +1,17 @@
+sources:
+  - name: ikun-react
+    url: https://github.com/ikun-kit/react
+    packagesDir: packages
+    description: ikun-kit React component library
+  - name: shadcn-ui
+    url: https://github.com/shadcn-ui/ui
+    packagesDir: apps/www/registry/default/ui
+    description: shadcn/ui component library
+
+targets:
+  - name: components
+    path: ./src/components
+    description: Project components directory
+  - name: ui
+    path: ./src/ui
+    description: UI components directory

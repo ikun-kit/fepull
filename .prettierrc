@@ -1,0 +1,24 @@
+{
+  "arrowParens": "avoid",
+  "bracketSpacing": true,
+  "endOfLine": "lf",
+  "importOrder": ["^\\w(.*)$"],
+  "importOrderParserPlugins": [
+    "typescript",
+    "decorators-legacy",
+    "importAttributes"
+  ],
+  "importOrderSeparation": true,
+  "importOrderSortSpecifiers": true,
+  "plugins": [
+    "@trivago/prettier-plugin-sort-imports",
+    "prettier-plugin-sort-json",
+    "prettier-plugin-packagejson"
+  ],
+  "printWidth": 80,
+  "semi": true,
+  "singleQuote": true,
+  "tabWidth": 2,
+  "trailingComma": "all",
+  "useTabs": false
+}

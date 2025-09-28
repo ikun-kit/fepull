@@ -1,0 +1,56 @@
+{
+  "name": "@ikun-kit/fepull",
+  "version": "1.0.0",
+  "description": "Frontend package management tool for pulling packages from monorepo projects",
+  "keywords": [
+    "frontend",
+    "package",
+    "monorepo",
+    "cli",
+    "tool"
+  ],
+  "license": "MIT",
+  "author": "ikun-kit",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "fepull": "dist/bin.js"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "README.zh.md",
+    "fepull.config.example.yml"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint --deny-warnings && tsc --noEmit",
+    "lint:fix": "oxlint --fix",
+    "prepare": "pnpm run build",
+    "start": "node dist/bin.js"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.7.0",
+    "picocolors": "^1.0.0",
+    "simple-git": "^3.20.0",
+    "yaml": "^2.3.4"
+  },
+  "devDependencies": {
+    "@trivago/prettier-plugin-sort-imports": "^4.3.0",
+    "@types/node": "^20.8.0",
+    "oxlint": "^0.11.0",
+    "prettier": "^3.1.0",
+    "prettier-plugin-packagejson": "^2.4.6",
+    "prettier-plugin-sort-json": "^3.1.0",
+    "typescript": "^5.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
