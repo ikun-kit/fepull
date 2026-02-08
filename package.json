@@ -36,7 +36,7 @@
     "lint": "oxlint --deny-warnings && tsc --noEmit",
     "lint:fix": "oxlint --fix",
     "prepare": "pnpm run build",
-    "publish": "pnpm run build && changeset publish",
+    "release": "pnpm run build && changeset publish",
     "start": "node dist/bin.js"
   },
   "dependencies": {
