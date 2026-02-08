@@ -1,4 +1,4 @@
-import { PackageInfo, Source } from '../types/config.js';
+import { PackageInfo, PackageSource } from '../types/config.js';
 
 import { promises as fs } from 'fs';
 import { join } from 'path';
@@ -15,7 +15,7 @@ function createGit(workingDir?: string) {
 }
 
 export async function getPackagesFromSource(
-  source: Source,
+  source: PackageSource,
 ): Promise<PackageInfo[]> {
   const tempDir = await createTempDir();
   const git = createGit(tempDir);
@@ -132,7 +132,7 @@ export async function getPackagesFromSource(
 }
 
 export async function downloadPackage(
-  source: Source,
+  source: PackageSource,
   packageName: string,
   targetDir: string,
 ): Promise<void> {

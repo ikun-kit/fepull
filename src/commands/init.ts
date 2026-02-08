@@ -41,16 +41,13 @@ export async function initCommand(): Promise<void> {
 
     if (!exampleFound) {
       // Fallback: create a basic default config if example file not found
-      const defaultConfig = `sources:
+      const defaultConfig = `packages:
   - name: example-source
-    url: https://github.com/your-org/your-repo
-    packagesDir: packages
+    source:
+      url: https://github.com/your-org/your-repo
+      packagesDir: packages
+    target: ./src/components
     description: Example source repository
-
-targets:
-  - name: components
-    path: ./src/components
-    description: Project components directory
 `;
       await fs.writeFile(CONFIG_FILE, defaultConfig);
     }

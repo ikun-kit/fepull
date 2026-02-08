@@ -9,8 +9,7 @@ A frontend package management tool for pulling packages from monorepo projects, 
 - 🔄 Multi-select packages for batch installation
 - 📊 Real-time installation progress with detailed summary
 - 🔧 Interactive configuration setup
-- 📦 Support for multiple source repositories
-- 🎨 Multiple target directories
+- 📦 Support for multiple package entries with bound source and target
 - 🚀 Works with npx, global installation, or local project installation
 
 ## Installation
@@ -46,42 +45,35 @@ pnpm fepull install
    fepull init
    ```
 
-   This creates a default `fepull.config.yml` file. Edit this file to configure your source repositories and target directories.
+   This creates a default `fepull.config.yml` file. Edit this file to configure your package entries.
 
 2. **Install packages**:
    ```bash
    fepull install
    ```
-   Interactive selection of source, package, and target directory.
+   Interactive selection of package entry and packages to install.
 
 ## Configuration
 
 The `fepull.config.yml` file structure:
 
 ```yaml
-sources:
+packages:
   - name: ikun-react
-    url: https://github.com/ikun-kit/react
-    packagesDir: packages
+    source:
+      url: https://github.com/ikun-kit/react
+      packagesDir: packages
+    target: ./src/components
     description: ikun-kit React component library
-
-targets:
-  - name: components
-    path: ./src/components
-    description: Project components directory
 ```
 
-### Sources
+### Package Entry
 
-- `name`: Identifier for the source repository
-- `url`: Git repository URL
-- `packagesDir`: Directory containing packages in the repository
-- `description`: Optional description
-
-### Targets
-
-- `name`: Identifier for the target directory
-- `path`: Local path where packages will be installed
+- `name`: Identifier for this package entry
+- `source`: Source repository configuration
+  - `url`: Git repository URL
+  - `packagesDir`: Directory containing packages in the repository
+- `target`: Local path where packages will be installed
 - `description`: Optional description
 
 ## Development
@@ -116,27 +108,24 @@ pnpm dev
 
 ## How It Works
 
-1. **Source Selection**: Choose from configured source repositories
+1. **Entry Selection**: Choose from configured package entries (source and target are bound together)
 2. **Package Discovery**: Uses Git sparse-checkout to efficiently fetch only the packages directory listing
 3. **Package Selection**: Interactive multi-selection from available packages (use space to select, enter to confirm)
-4. **Target Selection**: Choose destination directory from configured targets
-5. **Installation**: Uses sparse-checkout to download only the selected packages and copies them to the target directory
+4. **Installation**: Uses sparse-checkout to download only the selected packages and copies them to the target directory
 
 ## Example Workflow
 
 ```bash
 # Initialize project
 fepull init
-# → Configure ikun-kit/react as source
-# → Configure ./src/components as target
 # → Creates fepull.config.yml
+# → Edit it to configure your package entries (source + target)
 
 # Install multiple components
 fepull install
-# → Select "ikun-react" source
+# → Select "ikun-react" entry
 # → Multi-select packages: "button", "input", "dialog" (use space to select)
-# → Select "components" target
-# → Installing 3 package(s)...
+# → Packages are installed to the configured target directory
 # → ✅ button installed successfully
 # → ✅ input installed successfully
 # → ✅ dialog installed successfully

@@ -1,19 +1,17 @@
-export interface Source {
-  name: string;
+export interface PackageSource {
   url: string;
   packagesDir: string;
-  description?: string;
 }
 
-export interface Target {
+export interface PackageEntry {
   name: string;
-  path: string;
+  source: PackageSource;
+  target: string;
   description?: string;
 }
 
 export interface FepullConfig {
-  sources: Source[];
-  targets: Target[];
+  packages: PackageEntry[];
 }
 
 export interface PackageInfo {

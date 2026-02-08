@@ -1,4 +1,4 @@
-import { PackageInfo, Source, Target } from '../types/config.js';
+import { PackageEntry, PackageInfo } from '../types/config.js';
 import { configExists, readConfig } from '../utils/config.js';
 import { ensureDirectory } from '../utils/fs.js';
 import { downloadPackage, getPackagesFromSource } from '../utils/git.js';
@@ -21,27 +21,18 @@ export async function installCommand(): Promise<void> {
     return;
   }
 
-  if (config.sources.length === 0) {
+  if (config.packages.length === 0) {
     console.log(
       pc.yellow(
-        'No source repositories configured. Run "fepull init" to add sources.',
+        'No packages configured. Run "fepull init" to add package entries.',
       ),
     );
     return;
   }
 
-  if (config.targets.length === 0) {
-    console.log(
-      pc.yellow(
-        'No target directories configured. Run "fepull init" to add targets.',
-      ),
-    );
-    return;
-  }
-
-  // Step 1: Select source
-  const selectedSource = await selectSource(config.sources);
-  if (!selectedSource) return;
+  // Step 1: Select package entry
+  const selectedEntry = await selectPackageEntry(config.packages);
+  if (!selectedEntry) return;
 
   // Step 2: Get packages using sparse checkout
   const s = spinner();
@@ -50,7 +41,7 @@ export async function installCommand(): Promise<void> {
   let packages: PackageInfo[];
 
   try {
-    packages = await getPackagesFromSource(selectedSource);
+    packages = await getPackagesFromSource(selectedEntry.source);
     s.stop('Package list fetched successfully');
   } catch (error) {
     s.stop('Failed to fetch package list');
@@ -70,13 +61,7 @@ export async function installCommand(): Promise<void> {
     return;
   }
 
-  // Step 4: Select target
-  const selectedTarget = await selectTarget(config.targets);
-  if (!selectedTarget) {
-    return;
-  }
-
-  // Step 5: Download and install packages using sparse checkout
+  // Step 4: Download and install packages using sparse checkout
   console.log(
     pc.cyan(`\nInstalling ${selectedPackages.length} package(s)...\n`),
   );
@@ -91,9 +76,9 @@ export async function installCommand(): Promise<void> {
     s2.start(`Installing ${pkg.name} (${i + 1}/${selectedPackages.length})...`);
 
     try {
-      const targetPath = join(selectedTarget.path, pkg.name);
-      await ensureDirectory(selectedTarget.path);
-      await downloadPackage(selectedSource, pkg.name, targetPath);
+      const targetPath = join(selectedEntry.target, pkg.name);
+      await ensureDirectory(selectedEntry.target);
+      await downloadPackage(selectedEntry.source, pkg.name, targetPath);
       s2.stop(`✅ ${pkg.name} installed successfully`);
 
       results.push({ name: pkg.name, status: 'success', path: targetPath });
@@ -124,19 +109,21 @@ export async function installCommand(): Promise<void> {
   }
 }
 
-async function selectSource(sources: Source[]): Promise<Source | null> {
-  const sourceOptions = sources.map(source => ({
-    value: source,
-    label: source.name,
-    hint: source.description || source.url,
+async function selectPackageEntry(
+  packages: PackageEntry[],
+): Promise<PackageEntry | null> {
+  const options = packages.map(pkg => ({
+    value: pkg,
+    label: pkg.name,
+    hint: pkg.description || `${pkg.source.url} → ${pkg.target}`,
   }));
 
-  const selectedSource = await select({
-    message: 'Select source repository:',
-    options: sourceOptions,
+  const selected = await select({
+    message: 'Select package source:',
+    options,
   });
 
-  return selectedSource as Source | null;
+  return selected as PackageEntry | null;
 }
 
 async function selectPackages(
@@ -156,19 +143,4 @@ async function selectPackages(
   });
 
   return selectedPackages as PackageInfo[] | null;
-}
-
-async function selectTarget(targets: Target[]): Promise<Target | null> {
-  const targetOptions = targets.map(target => ({
-    value: target,
-    label: target.name,
-    hint: target.description || target.path,
-  }));
-
-  const selectedTarget = await select({
-    message: 'Select target directory:',
-    options: targetOptions,
-  });
-
-  return selectedTarget as Target | null;
 }

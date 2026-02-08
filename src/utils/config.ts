@@ -34,7 +34,6 @@ export async function writeConfig(config: FepullConfig): Promise<void> {
 
 export function getDefaultConfig(): FepullConfig {
   return {
-    sources: [],
-    targets: [],
+    packages: [],
   };
 }
