@@ -3,7 +3,22 @@ import { initCommand } from './commands/init.js';
 import { installCommand } from './commands/install.js';
 import { cancel, intro, isCancel, outro } from '@clack/prompts';
 
+import { createRequire } from 'module';
 import pc from 'picocolors';
+
+const require = createRequire(import.meta.url);
+const { version } = require('../package.json');
+
+function printHelp() {
+  console.log(`fepull v${version}`);
+  console.log('\nUsage: fepull <command> [options]');
+  console.log('\nCommands:');
+  console.log('  init       Initialize configuration file');
+  console.log('  install    Interactive package installation');
+  console.log('\nOptions:');
+  console.log('  -v, --version    Show version number');
+  console.log('  -h, --help       Show help');
+}
 
 // Handle process signals for graceful shutdown
 function setupSignalHandlers() {
@@ -22,6 +37,16 @@ async function main() {
   const args = process.argv.slice(2);
   const command = args[0];
 
+  if (command === '-v' || command === '--version') {
+    console.log(version);
+    return;
+  }
+
+  if (command === '-h' || command === '--help') {
+    printHelp();
+    return;
+  }
+
   intro(pc.bgBlue(pc.black(' fepull ')));
 
   try {
@@ -33,15 +58,11 @@ async function main() {
         await installCommand();
         break;
       case undefined:
-        console.log(pc.yellow('Available commands:'));
-        console.log('  fepull init     - Initialize configuration file');
-        console.log('  fepull install  - Interactive package installation');
+        printHelp();
         break;
       default:
         console.log(pc.red(`Unknown command: ${command}`));
-        console.log(pc.yellow('Available commands:'));
-        console.log('  fepull init     - Initialize configuration file');
-        console.log('  fepull install  - Interactive package installation');
+        printHelp();
         process.exit(1);
     }
 

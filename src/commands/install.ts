@@ -1,8 +1,8 @@
-import { PackageEntry, PackageInfo } from '../types/config.js';
+import { PackageInfo } from '../types/config.js';
 import { configExists, readConfig } from '../utils/config.js';
-import { ensureDirectory } from '../utils/fs.js';
+import { directoryExists, ensureDirectory } from '../utils/fs.js';
 import { downloadPackage, getPackagesFromSource } from '../utils/git.js';
-import { multiselect, select, spinner } from '@clack/prompts';
+import { multiselect, spinner } from '@clack/prompts';
 
 import { join } from 'path';
 import pc from 'picocolors';
@@ -30,117 +30,114 @@ export async function installCommand(): Promise<void> {
     return;
   }
 
-  // Step 1: Select package entry
-  const selectedEntry = await selectPackageEntry(config.packages);
-  if (!selectedEntry) return;
+  let totalSuccess = 0;
+  let totalFailure = 0;
+  let totalSkipped = 0;
 
-  // Step 2: Get packages using sparse checkout
-  const s = spinner();
-  s.start('Fetching package list...');
+  for (const entry of config.packages) {
+    console.log(pc.cyan(`\n📦 Processing entry: ${entry.name}`));
 
-  let packages: PackageInfo[];
+    // Fetch available packages from source
+    const s = spinner();
+    s.start('Fetching package list...');
 
-  try {
-    packages = await getPackagesFromSource(selectedEntry.source);
-    s.stop('Package list fetched successfully');
-  } catch (error) {
-    s.stop('Failed to fetch package list');
-    console.log(pc.red(`Error: ${error}`));
-    return;
-  }
-
-  if (packages.length === 0) {
-    console.log(pc.yellow('No packages found in the source repository.'));
-    return;
-  }
-
-  // Step 3: Select packages (multi-select)
-  const selectedPackages = await selectPackages(packages);
-  if (!selectedPackages || selectedPackages.length === 0) {
-    console.log(pc.yellow('No packages selected.'));
-    return;
-  }
-
-  // Step 4: Download and install packages using sparse checkout
-  console.log(
-    pc.cyan(`\nInstalling ${selectedPackages.length} package(s)...\n`),
-  );
-
-  const results = [];
-  let successCount = 0;
-  let failureCount = 0;
-
-  for (let i = 0; i < selectedPackages.length; i++) {
-    const pkg = selectedPackages[i];
-    const s2 = spinner();
-    s2.start(`Installing ${pkg.name} (${i + 1}/${selectedPackages.length})...`);
+    let packages: PackageInfo[];
 
     try {
-      const targetPath = join(selectedEntry.target, pkg.name);
-      await ensureDirectory(selectedEntry.target);
-      await downloadPackage(selectedEntry.source, pkg.name, targetPath);
-      s2.stop(`✅ ${pkg.name} installed successfully`);
-
-      results.push({ name: pkg.name, status: 'success', path: targetPath });
-      successCount++;
+      packages = await getPackagesFromSource(entry.source);
+      s.stop('Package list fetched successfully');
     } catch (error) {
-      s2.stop(`❌ Failed to install ${pkg.name}`);
-      console.log(pc.red(`   Error: ${error}`));
+      s.stop('Failed to fetch package list');
+      console.log(pc.red(`Error: ${error}`));
+      continue;
+    }
 
-      results.push({ name: pkg.name, status: 'failed', error: error });
-      failureCount++;
+    if (packages.length === 0) {
+      console.log(pc.yellow('No packages found in the source repository.'));
+      continue;
+    }
+
+    // Split packages into new and existing
+    const newPackages: PackageInfo[] = [];
+    const existingPackages: PackageInfo[] = [];
+
+    for (const pkg of packages) {
+      const targetPath = join(entry.target, pkg.name);
+      if (await directoryExists(targetPath)) {
+        existingPackages.push(pkg);
+      } else {
+        newPackages.push(pkg);
+      }
+    }
+
+    // Determine which existing packages to overwrite
+    let overwritePackages: PackageInfo[] = [];
+
+    if (existingPackages.length > 0) {
+      console.log(
+        pc.yellow(
+          `\n${existingPackages.length} package(s) already exist in ${entry.target}:`,
+        ),
+      );
+
+      const selected = await multiselect({
+        message: 'Select packages to overwrite (enter to skip all):',
+        options: existingPackages.map(pkg => ({
+          value: pkg,
+          label: pkg.name,
+          hint: 'already exists',
+        })),
+        required: false,
+      });
+
+      if (Array.isArray(selected)) {
+        overwritePackages = selected as PackageInfo[];
+      }
+    }
+
+    // Final install list
+    const toInstall = [...newPackages, ...overwritePackages];
+
+    if (toInstall.length === 0) {
+      console.log(pc.yellow('No packages to install for this entry.'));
+      totalSkipped += packages.length;
+      continue;
+    }
+
+    const skippedCount = existingPackages.length - overwritePackages.length;
+    totalSkipped += skippedCount;
+
+    console.log(
+      pc.cyan(`\nInstalling ${toInstall.length} package(s)...\n`),
+    );
+
+    // Download packages
+    for (let i = 0; i < toInstall.length; i++) {
+      const pkg = toInstall[i];
+      const s2 = spinner();
+      s2.start(`Installing ${pkg.name} (${i + 1}/${toInstall.length})...`);
+
+      try {
+        const targetPath = join(entry.target, pkg.name);
+        await ensureDirectory(entry.target);
+        await downloadPackage(entry.source, pkg.name, targetPath);
+        s2.stop(`✅ ${pkg.name} installed successfully`);
+        totalSuccess++;
+      } catch (error) {
+        s2.stop(`❌ Failed to install ${pkg.name}`);
+        console.log(pc.red(`   Error: ${error}`));
+        totalFailure++;
+      }
     }
   }
 
   // Summary
   console.log(pc.cyan('\n📋 Installation Summary:'));
-  console.log(pc.green(`✅ ${successCount} package(s) installed successfully`));
-  if (failureCount > 0) {
-    console.log(pc.red(`❌ ${failureCount} package(s) failed to install`));
+  console.log(pc.green(`✅ ${totalSuccess} package(s) installed successfully`));
+  if (totalSkipped > 0) {
+    console.log(pc.yellow(`⏭️  ${totalSkipped} package(s) skipped`));
   }
-
-  // List successful installations
-  const successful = results.filter(r => r.status === 'success');
-  if (successful.length > 0) {
-    console.log(pc.green('\n📦 Installed packages:'));
-    successful.forEach(pkg => {
-      console.log(pc.green(`   • ${pkg.name} → ${pkg.path}`));
-    });
+  if (totalFailure > 0) {
+    console.log(pc.red(`❌ ${totalFailure} package(s) failed to install`));
   }
-}
-
-async function selectPackageEntry(
-  packages: PackageEntry[],
-): Promise<PackageEntry | null> {
-  const options = packages.map(pkg => ({
-    value: pkg,
-    label: pkg.name,
-    hint: pkg.description || `${pkg.source.url} → ${pkg.target}`,
-  }));
-
-  const selected = await select({
-    message: 'Select package source:',
-    options,
-  });
-
-  return selected as PackageEntry | null;
-}
-
-async function selectPackages(
-  packages: PackageInfo[],
-): Promise<PackageInfo[] | null> {
-  const packageOptions = packages.map(pkg => ({
-    value: pkg,
-    label: pkg.name,
-    hint: pkg.description || 'No description',
-  }));
-
-  const selectedPackages = await multiselect({
-    message:
-      'Select packages to install (use space to select, enter to confirm):',
-    options: packageOptions,
-    required: false,
-  });
-
-  return selectedPackages as PackageInfo[] | null;
 }
