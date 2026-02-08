@@ -1,5 +1,12 @@
 # @ikun-kit/fepull
 
+## 1.0.2
+
+### Patch Changes
+
+- 5f2303c: 修复发布命令命名
+- 815332b: install 移除交互模式, 添加 --version/--help
+
 ## 1.0.1
 
 ### Patch Changes
