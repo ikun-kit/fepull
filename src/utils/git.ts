@@ -2,7 +2,7 @@ import { PackageInfo, PackageSource } from '../types/config.js';
 
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { simpleGit } from 'simple-git';
+import { SimpleGit, simpleGit } from 'simple-git';
 
 // Create git with timeout and error handling
 function createGit(workingDir?: string) {
@@ -14,6 +14,51 @@ function createGit(workingDir?: string) {
   });
 }
 
+async function checkoutRemoteBranch(git: SimpleGit): Promise<void> {
+  const commonBranches = ['main', 'master', 'develop'];
+  let checkedOut = false;
+  let lastError: any = null;
+
+  for (const branch of commonBranches) {
+    try {
+      await git.checkout([`origin/${branch}`]);
+      checkedOut = true;
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (!checkedOut) {
+    try {
+      const branches = await git.branch(['-r']);
+      const remoteBranches = branches.all.filter(
+        b => b.startsWith('origin/') && !b.includes('HEAD'),
+      );
+      if (remoteBranches.length > 0) {
+        await git.checkout([remoteBranches[0]]);
+        checkedOut = true;
+      }
+    } catch {
+      for (const branch of commonBranches) {
+        try {
+          await git.checkout([branch]);
+          checkedOut = true;
+          break;
+        } catch {
+          // Continue
+        }
+      }
+    }
+  }
+
+  if (!checkedOut) {
+    throw new Error(
+      `Failed to checkout any branch. Last error: ${lastError?.message || lastError || 'Unknown error'}`,
+    );
+  }
+}
+
 export async function getPackagesFromSource(
   source: PackageSource,
 ): Promise<PackageInfo[]> {
@@ -21,18 +66,13 @@ export async function getPackagesFromSource(
   const git = createGit(tempDir);
 
   try {
-    // Initialize empty repo
     await git.init();
     await git.addRemote('origin', source.url);
-
-    // Enable sparse-checkout
     await git.raw(['config', 'core.sparseCheckout', 'true']);
 
-    // Configure sparse-checkout to only get the packages directory listing
     const sparseCheckoutPath = join(tempDir, '.git', 'info', 'sparse-checkout');
     await fs.writeFile(sparseCheckoutPath, `${source.packagesDir}/\n`);
 
-    // Fetch with better error handling
     try {
       await git.fetch(['origin', '--depth=1']);
     } catch (fetchError: any) {
@@ -41,52 +81,7 @@ export async function getPackagesFromSource(
       );
     }
 
-    // Try common branch names
-    const commonBranches = ['main', 'master', 'develop'];
-    let checkedOut = false;
-    let lastError: any = null;
-
-    for (const branch of commonBranches) {
-      try {
-        await git.checkout([`origin/${branch}`]);
-        checkedOut = true;
-        break;
-      } catch (error) {
-        lastError = error;
-        // Continue to next branch
-      }
-    }
-
-    if (!checkedOut) {
-      // Fallback: get the first available remote branch
-      try {
-        const branches = await git.branch(['-r']);
-        const remoteBranches = branches.all.filter(
-          b => b.startsWith('origin/') && !b.includes('HEAD'),
-        );
-        if (remoteBranches.length > 0) {
-          await git.checkout([remoteBranches[0]]);
-          checkedOut = true;
-        }
-      } catch {
-        // Final fallback: try without origin prefix
-        for (const branch of commonBranches) {
-          try {
-            await git.checkout([branch]);
-            checkedOut = true;
-            break;
-          } catch {
-            // Continue
-          }
-        }
-      }
-    }
-
-    if (!checkedOut) {
-      throw new Error(
-        `Failed to checkout any branch. Last error: ${lastError?.message || lastError || 'Unknown error'}`,
-      );
-    }
+    await checkoutRemoteBranch(git);
 
     const packagesPath = join(tempDir, source.packagesDir);
     const packages: PackageInfo[] = [];
@@ -101,7 +96,6 @@ export async function getPackagesFromSource(
             path: join(packagesPath, entry.name),
           };
 
-          // Try to get package.json description
           try {
             const packageJsonPath = join(
               packagesPath,
@@ -131,6 +125,39 @@ export async function getPackagesFromSource(
   }
 }
 
+export async function downloadSource(
+  source: PackageSource,
+  targetDir: string,
+): Promise<void> {
+  const tempDir = await createTempDir();
+  const git = createGit(tempDir);
+
+  try {
+    await git.init();
+    await git.addRemote('origin', source.url);
+    await git.raw(['config', 'core.sparseCheckout', 'true']);
+
+    const sparseCheckoutPath = join(tempDir, '.git', 'info', 'sparse-checkout');
+    await fs.writeFile(sparseCheckoutPath, `${source.packagesDir}/\n`);
+
+    try {
+      await git.fetch(['origin', '--depth=1']);
+    } catch (fetchError: any) {
+      throw new Error(
+        `Failed to fetch repository: ${fetchError?.message || fetchError}`,
+      );
+    }
+
+    await checkoutRemoteBranch(git);
+
+    const sourcePath = join(tempDir, source.packagesDir);
+    const { copyDirectory } = await import('./fs.js');
+    await copyDirectory(sourcePath, targetDir);
+  } finally {
+    await cleanupTempDir(tempDir);
+  }
+}
+
 export async function downloadPackage(
   source: PackageSource,
   packageName: string,
@@ -140,19 +167,14 @@ export async function downloadPackage(
   const git = createGit(tempDir);
 
   try {
-    // Initialize empty repo
     await git.init();
     await git.addRemote('origin', source.url);
-
-    // Enable sparse-checkout
     await git.raw(['config', 'core.sparseCheckout', 'true']);
 
-    // Configure sparse-checkout to only get the specific package
     const sparseCheckoutPath = join(tempDir, '.git', 'info', 'sparse-checkout');
     const packagePath = `${source.packagesDir}/${packageName}/`;
     await fs.writeFile(sparseCheckoutPath, `${packagePath}\n`);
 
-    // Fetch with better error handling
     try {
       await git.fetch(['origin', '--depth=1']);
     } catch (fetchError: any) {
@@ -161,54 +183,8 @@ export async function downloadPackage(
       );
     }
 
-    // Try common branch names
-    const commonBranches = ['main', 'master', 'develop'];
-    let checkedOut = false;
-    let lastError: any = null;
+    await checkoutRemoteBranch(git);
 
-    for (const branch of commonBranches) {
-      try {
-        await git.checkout([`origin/${branch}`]);
-        checkedOut = true;
-        break;
-      } catch (error) {
-        lastError = error;
-        // Continue to next branch
-      }
-    }
-
-    if (!checkedOut) {
-      // Fallback: get the first available remote branch
-      try {
-        const branches = await git.branch(['-r']);
-        const remoteBranches = branches.all.filter(
-          b => b.startsWith('origin/') && !b.includes('HEAD'),
-        );
-        if (remoteBranches.length > 0) {
-          await git.checkout([remoteBranches[0]]);
-          checkedOut = true;
-        }
-      } catch {
-        // Final fallback: try without origin prefix
-        for (const branch of commonBranches) {
-          try {
-            await git.checkout([branch]);
-            checkedOut = true;
-            break;
-          } catch {
-            // Continue
-          }
-        }
-      }
-    }
-
-    if (!checkedOut) {
-      throw new Error(
-        `Failed to checkout any branch. Last error: ${lastError?.message || lastError || 'Unknown error'}`,
-      );
-    }
-
-    // Copy the package to target directory
     const sourcePackagePath = join(tempDir, source.packagesDir, packageName);
     const { copyDirectory } = await import('./fs.js');
     await copyDirectory(sourcePackagePath, targetDir);
