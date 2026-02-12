@@ -1,7 +1,7 @@
 import { PackageEntry } from '../types/config.js';
 import { configExists, readConfig } from '../utils/config.js';
 import { directoryExists } from '../utils/fs.js';
-import { downloadSource } from '../utils/git.js';
+import { downloadEntries } from '../utils/git.js';
 import { multiselect, spinner } from '@clack/prompts';
 
 import { promises as fs } from 'fs';
@@ -80,30 +80,42 @@ export async function installCommand(): Promise<void> {
     pc.cyan(`\nInstalling ${toInstall.length} package(s)...\n`),
   );
 
+  // Remove existing directories for overwrite entries
+  for (const entry of overwriteEntries) {
+    if (await directoryExists(entry.target)) {
+      await fs.rm(entry.target, { recursive: true, force: true });
+    }
+  }
+
+  const s3 = spinner();
+  s3.start(`Downloading ${toInstall.length} package(s)...`);
+
   let successCount = 0;
   let failureCount = 0;
   const successList: { name: string; target: string }[] = [];
 
-  for (let i = 0; i < toInstall.length; i++) {
-    const entry = toInstall[i];
-    const s = spinner();
-    s.start(`Installing ${entry.name} (${i + 1}/${toInstall.length})...`);
+  try {
+    const results = await downloadEntries(toInstall);
+    s3.stop('Download complete');
 
-    try {
-      // Remove existing directory for overwrite entries
-      if (await directoryExists(entry.target)) {
-        await fs.rm(entry.target, { recursive: true, force: true });
+    for (const r of results) {
+      if (r.success) {
+        const entry = toInstall.find(e => e.name === r.name)!;
+        console.log(pc.green(`  ✅ ${r.name} installed successfully`));
+        successCount++;
+        successList.push({ name: r.name, target: entry.target });
+      } else {
+        console.log(pc.red(`  ❌ Failed to install ${r.name}`));
+        if (r.error) {
+          console.log(pc.red(`     Error: ${r.error}`));
+        }
+        failureCount++;
       }
-
-      await downloadSource(entry.source, entry.target);
-      s.stop(`✅ ${entry.name} installed successfully`);
-      successCount++;
-      successList.push({ name: entry.name, target: entry.target });
-    } catch (error) {
-      s.stop(`❌ Failed to install ${entry.name}`);
-      console.log(pc.red(`   Error: ${error}`));
-      failureCount++;
     }
+  } catch (error) {
+    s3.stop('Failed to download packages');
+    console.log(pc.red(`Error: ${error}`));
+    return;
   }
 
   // Summary

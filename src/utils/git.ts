@@ -1,4 +1,4 @@
-import { PackageInfo, PackageSource } from '../types/config.js';
+import { PackageEntry, PackageInfo, PackageSource } from '../types/config.js';
 
 import { promises as fs } from 'fs';
 import { join } from 'path';
@@ -12,6 +12,34 @@ function createGit(workingDir?: string) {
       block: 30000, // 30 seconds
     },
   });
+}
+
+// Retry with exponential backoff
+async function retry<T>(
+  fn: () => Promise<T>,
+  { maxAttempts = 3, baseDelay = 1000 } = {},
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt === maxAttempts) throw error;
+      const delay = baseDelay * Math.pow(2, attempt - 1);
+      console.warn(
+        `  Attempt ${attempt}/${maxAttempts} failed, retrying in ${delay / 1000}s...`,
+      );
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  throw new Error('retry: exhausted all attempts');
+}
+
+// Apply git transport settings to avoid common fetch failures
+async function configureGitTransport(git: SimpleGit): Promise<void> {
+  await git.raw(['config', 'http.postBuffer', '524288000']);
+  await git.raw(['config', 'http.version', 'HTTP/1.1']);
+  await git.raw(['config', 'http.lowSpeedLimit', '1000']);
+  await git.raw(['config', 'http.lowSpeedTime', '30']);
 }
 
 async function checkoutRemoteBranch(git: SimpleGit): Promise<void> {
@@ -69,12 +97,13 @@ export async function getPackagesFromSource(
     await git.init();
     await git.addRemote('origin', source.url);
     await git.raw(['config', 'core.sparseCheckout', 'true']);
+    await configureGitTransport(git);
 
     const sparseCheckoutPath = join(tempDir, '.git', 'info', 'sparse-checkout');
     await fs.writeFile(sparseCheckoutPath, `${source.packagesDir}/\n`);
 
     try {
-      await git.fetch(['origin', '--depth=1']);
+      await retry(() => git.fetch(['origin', '--depth=1']));
     } catch (fetchError: any) {
       throw new Error(
         `Failed to fetch repository: ${fetchError?.message || fetchError}`,
@@ -136,12 +165,13 @@ export async function downloadSource(
     await git.init();
     await git.addRemote('origin', source.url);
     await git.raw(['config', 'core.sparseCheckout', 'true']);
+    await configureGitTransport(git);
 
     const sparseCheckoutPath = join(tempDir, '.git', 'info', 'sparse-checkout');
     await fs.writeFile(sparseCheckoutPath, `${source.packagesDir}/\n`);
 
     try {
-      await git.fetch(['origin', '--depth=1']);
+      await retry(() => git.fetch(['origin', '--depth=1']));
     } catch (fetchError: any) {
       throw new Error(
         `Failed to fetch repository: ${fetchError?.message || fetchError}`,
@@ -170,13 +200,14 @@ export async function downloadPackage(
     await git.init();
     await git.addRemote('origin', source.url);
     await git.raw(['config', 'core.sparseCheckout', 'true']);
+    await configureGitTransport(git);
 
     const sparseCheckoutPath = join(tempDir, '.git', 'info', 'sparse-checkout');
     const packagePath = `${source.packagesDir}/${packageName}/`;
     await fs.writeFile(sparseCheckoutPath, `${packagePath}\n`);
 
     try {
-      await git.fetch(['origin', '--depth=1']);
+      await retry(() => git.fetch(['origin', '--depth=1']));
     } catch (fetchError: any) {
       throw new Error(
         `Failed to fetch repository: ${fetchError?.message || fetchError}`,
@@ -191,6 +222,90 @@ export async function downloadPackage(
   } finally {
     await cleanupTempDir(tempDir);
   }
+}
+
+export interface DownloadResult {
+  name: string;
+  success: boolean;
+  error?: string;
+}
+
+// Batch download: group entries by source, single fetch per source
+export async function downloadEntries(
+  entries: PackageEntry[],
+): Promise<DownloadResult[]> {
+  // Group entries by source key (url + packagesDir)
+  const groups = new Map<string, PackageEntry[]>();
+  for (const entry of entries) {
+    const key = `${entry.source.url}\0${entry.source.packagesDir}`;
+    const group = groups.get(key) ?? [];
+    group.push(entry);
+    groups.set(key, group);
+  }
+
+  const allResults: DownloadResult[] = [];
+
+  for (const group of groups.values()) {
+    const source = group[0].source;
+    const tempDir = await createTempDir();
+    const git = createGit(tempDir);
+
+    try {
+      await git.init();
+      await git.addRemote('origin', source.url);
+      await git.raw(['config', 'core.sparseCheckout', 'true']);
+      await configureGitTransport(git);
+
+      // Sparse-checkout all packages in this group at once
+      const sparseCheckoutPath = join(
+        tempDir,
+        '.git',
+        'info',
+        'sparse-checkout',
+      );
+      await fs.writeFile(
+        sparseCheckoutPath,
+        `${source.packagesDir}/\n`,
+      );
+
+      // Single fetch with retry for the entire group
+      try {
+        await retry(() => git.fetch(['origin', '--depth=1']));
+      } catch (fetchError: any) {
+        // All entries in this group fail
+        for (const entry of group) {
+          allResults.push({
+            name: entry.name,
+            success: false,
+            error: `Failed to fetch repository: ${fetchError?.message || fetchError}`,
+          });
+        }
+        continue;
+      }
+
+      await checkoutRemoteBranch(git);
+
+      // Copy each entry to its target
+      const { copyDirectory } = await import('./fs.js');
+      for (const entry of group) {
+        try {
+          const sourcePath = join(tempDir, source.packagesDir);
+          await copyDirectory(sourcePath, entry.target);
+          allResults.push({ name: entry.name, success: true });
+        } catch (error: any) {
+          allResults.push({
+            name: entry.name,
+            success: false,
+            error: error?.message || String(error),
+          });
+        }
+      }
+    } finally {
+      await cleanupTempDir(tempDir);
+    }
+  }
+
+  return allResults;
 }
 
 export async function createTempDir(): Promise<string> {
