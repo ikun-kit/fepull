@@ -1,5 +1,11 @@
 # @ikun-kit/fepull
 
+## 1.0.5
+
+### Patch Changes
+
+- 1178ce1: 修复临时目录命名冲突问题
+
 ## 1.0.4
 
 ### Patch Changes
