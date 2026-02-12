@@ -1,6 +1,6 @@
 {
   "name": "@ikun-kit/fepull",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Frontend package management tool for pulling packages from monorepo projects",
   "keywords": [
     "cli",

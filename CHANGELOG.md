@@ -1,5 +1,12 @@
 # @ikun-kit/fepull
 
+## 1.0.4
+
+### Patch Changes
+
+- 441cd0c: 迁移 eslint/prettier 到 oxlint/oxformat
+- e19316f: 优化文件拉取中断过多的问题
+
 ## 1.0.3
 
 ### Patch Changes
