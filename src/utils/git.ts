@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 
@@ -111,7 +112,8 @@ export async function getPackagesFromSource(
       await retry(() => git.fetch(['origin', '--depth=1']));
     } catch (fetchError: any) {
       throw new Error(
-        `Failed to fetch repository: ${fetchError?.message || fetchError}`, { cause: fetchError },
+        `Failed to fetch repository: ${fetchError?.message || fetchError}`,
+        { cause: fetchError },
       );
     }
 
@@ -181,7 +183,8 @@ export async function downloadSource(
       await retry(() => git.fetch(['origin', '--depth=1']));
     } catch (fetchError: any) {
       throw new Error(
-        `Failed to fetch repository: ${fetchError?.message || fetchError}`, { cause: fetchError },
+        `Failed to fetch repository: ${fetchError?.message || fetchError}`,
+        { cause: fetchError },
       );
     }
 
@@ -217,7 +220,8 @@ export async function downloadPackage(
       await retry(() => git.fetch(['origin', '--depth=1']));
     } catch (fetchError: any) {
       throw new Error(
-        `Failed to fetch repository: ${fetchError?.message || fetchError}`, { cause: fetchError },
+        `Failed to fetch repository: ${fetchError?.message || fetchError}`,
+        { cause: fetchError },
       );
     }
 
@@ -252,7 +256,9 @@ export async function downloadEntries(
 
   const allResults: DownloadResult[] = [];
 
-  const processGroup = async (group: PackageEntry[]): Promise<DownloadResult[]> => {
+  const processGroup = async (
+    group: PackageEntry[],
+  ): Promise<DownloadResult[]> => {
     const source = group[0].source;
     const tempDir = await createTempDir();
     const git = createGit(tempDir);
@@ -315,7 +321,10 @@ export async function downloadEntries(
 }
 
 export async function createTempDir(): Promise<string> {
-  const tempDir = join(process.cwd(), '.fepull-temp-' + Date.now());
+  const tempDir = join(
+    process.cwd(),
+    `.fepull-temp-${Date.now()}-${randomBytes(4).toString('hex')}`,
+  );
   await fs.mkdir(tempDir, { recursive: true });
   return tempDir;
 }

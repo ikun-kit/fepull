@@ -41,7 +41,7 @@
     "lint:types": "tsc --noEmit",
     "prepare": "pnpm run build",
     "release": "pnpm run build && changeset publish",
-    "start": "node dist/bin.js"
+    "test:install": "node dist/bin.js install"
   },
   "dependencies": {
     "@clack/prompts": "^0.7.0",
