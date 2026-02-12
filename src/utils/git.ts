@@ -1,8 +1,9 @@
-import { PackageEntry, PackageInfo, PackageSource } from '../types/config.js';
-
 import { promises as fs } from 'fs';
 import { join } from 'path';
+
 import { SimpleGit, simpleGit } from 'simple-git';
+
+import { PackageEntry, PackageInfo, PackageSource } from '../types/config.js';
 
 // Create git with timeout and error handling
 function createGit(workingDir?: string) {
@@ -21,6 +22,7 @@ async function retry<T>(
 ): Promise<T> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
+      // eslint-disable-next-line no-await-in-loop -- sequential: retry must wait for each attempt
       return await fn();
     } catch (error) {
       if (attempt === maxAttempts) throw error;
@@ -28,6 +30,7 @@ async function retry<T>(
       console.warn(
         `  Attempt ${attempt}/${maxAttempts} failed, retrying in ${delay / 1000}s...`,
       );
+      // eslint-disable-next-line no-await-in-loop
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -49,6 +52,7 @@ async function checkoutRemoteBranch(git: SimpleGit): Promise<void> {
 
   for (const branch of commonBranches) {
     try {
+      // eslint-disable-next-line no-await-in-loop -- sequential: try branches one by one
       await git.checkout([`origin/${branch}`]);
       checkedOut = true;
       break;
@@ -70,6 +74,7 @@ async function checkoutRemoteBranch(git: SimpleGit): Promise<void> {
     } catch {
       for (const branch of commonBranches) {
         try {
+          // eslint-disable-next-line no-await-in-loop -- sequential: try branches one by one
           await git.checkout([branch]);
           checkedOut = true;
           break;
@@ -106,7 +111,7 @@ export async function getPackagesFromSource(
       await retry(() => git.fetch(['origin', '--depth=1']));
     } catch (fetchError: any) {
       throw new Error(
-        `Failed to fetch repository: ${fetchError?.message || fetchError}`,
+        `Failed to fetch repository: ${fetchError?.message || fetchError}`, { cause: fetchError },
       );
     }
 
@@ -117,9 +122,10 @@ export async function getPackagesFromSource(
 
     try {
       const entries = await fs.readdir(packagesPath, { withFileTypes: true });
+      const dirEntries = entries.filter(e => e.isDirectory());
 
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
+      const results = await Promise.all(
+        dirEntries.map(async entry => {
           const packageInfo: PackageInfo = {
             name: entry.name,
             path: join(packagesPath, entry.name),
@@ -141,9 +147,10 @@ export async function getPackagesFromSource(
             // Package.json not found or invalid, continue without description
           }
 
-          packages.push(packageInfo);
-        }
-      }
+          return packageInfo;
+        }),
+      );
+      packages.push(...results);
     } catch {
       // Directory might not exist or be accessible
     }
@@ -174,7 +181,7 @@ export async function downloadSource(
       await retry(() => git.fetch(['origin', '--depth=1']));
     } catch (fetchError: any) {
       throw new Error(
-        `Failed to fetch repository: ${fetchError?.message || fetchError}`,
+        `Failed to fetch repository: ${fetchError?.message || fetchError}`, { cause: fetchError },
       );
     }
 
@@ -210,7 +217,7 @@ export async function downloadPackage(
       await retry(() => git.fetch(['origin', '--depth=1']));
     } catch (fetchError: any) {
       throw new Error(
-        `Failed to fetch repository: ${fetchError?.message || fetchError}`,
+        `Failed to fetch repository: ${fetchError?.message || fetchError}`, { cause: fetchError },
       );
     }
 
@@ -245,7 +252,7 @@ export async function downloadEntries(
 
   const allResults: DownloadResult[] = [];
 
-  for (const group of groups.values()) {
+  const processGroup = async (group: PackageEntry[]): Promise<DownloadResult[]> => {
     const source = group[0].source;
     const tempDir = await createTempDir();
     const git = createGit(tempDir);
@@ -256,53 +263,52 @@ export async function downloadEntries(
       await git.raw(['config', 'core.sparseCheckout', 'true']);
       await configureGitTransport(git);
 
-      // Sparse-checkout all packages in this group at once
       const sparseCheckoutPath = join(
         tempDir,
         '.git',
         'info',
         'sparse-checkout',
       );
-      await fs.writeFile(
-        sparseCheckoutPath,
-        `${source.packagesDir}/\n`,
-      );
+      await fs.writeFile(sparseCheckoutPath, `${source.packagesDir}/\n`);
 
-      // Single fetch with retry for the entire group
       try {
         await retry(() => git.fetch(['origin', '--depth=1']));
       } catch (fetchError: any) {
-        // All entries in this group fail
-        for (const entry of group) {
-          allResults.push({
-            name: entry.name,
-            success: false,
-            error: `Failed to fetch repository: ${fetchError?.message || fetchError}`,
-          });
-        }
-        continue;
+        return group.map(entry => ({
+          name: entry.name,
+          success: false,
+          error: `Failed to fetch repository: ${fetchError?.message || fetchError}`,
+        }));
       }
 
       await checkoutRemoteBranch(git);
 
-      // Copy each entry to its target
       const { copyDirectory } = await import('./fs.js');
-      for (const entry of group) {
-        try {
-          const sourcePath = join(tempDir, source.packagesDir);
-          await copyDirectory(sourcePath, entry.target);
-          allResults.push({ name: entry.name, success: true });
-        } catch (error: any) {
-          allResults.push({
-            name: entry.name,
-            success: false,
-            error: error?.message || String(error),
-          });
-        }
-      }
+      return Promise.all(
+        group.map(async entry => {
+          try {
+            const sourcePath = join(tempDir, source.packagesDir);
+            await copyDirectory(sourcePath, entry.target);
+            return { name: entry.name, success: true };
+          } catch (error: any) {
+            return {
+              name: entry.name,
+              success: false,
+              error: error?.message || String(error),
+            };
+          }
+        }),
+      );
     } finally {
       await cleanupTempDir(tempDir);
     }
+  };
+
+  const groupResults = await Promise.all(
+    [...groups.values()].map(group => processGroup(group)),
+  );
+  for (const results of groupResults) {
+    allResults.push(...results);
   }
 
   return allResults;

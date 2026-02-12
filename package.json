@@ -3,20 +3,18 @@
   "version": "1.0.3",
   "description": "Frontend package management tool for pulling packages from monorepo projects",
   "keywords": [
-    "frontend",
-    "package",
-    "monorepo",
     "cli",
+    "frontend",
+    "monorepo",
+    "package",
     "tool"
   ],
+  "license": "MIT",
+  "author": "xiaoyown",
   "repository": {
     "type": "git",
     "url": "https://github.com/ikun-kit/fepull.git"
   },
-  "license": "MIT",
-  "author": "xiaoyown",
-  "type": "module",
-  "main": "dist/index.js",
   "bin": {
     "fepull": "dist/bin.js"
   },
@@ -26,15 +24,21 @@
     "README.zh.md",
     "fepull.config.example.yml"
   ],
+  "type": "module",
+  "main": "dist/index.js",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
     "build": "tsc",
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "dev": "tsc --watch",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "lint": "oxlint --deny-warnings && tsc --noEmit",
-    "lint:fix": "oxlint --fix",
+    "format": "oxfmt --write",
+    "format:check": "oxfmt --check",
+    "lint": "pnpm lint:types && oxlint .",
+    "lint:fix": "oxlint . --fix",
+    "lint:types": "tsc --noEmit",
     "prepare": "pnpm run build",
     "release": "pnpm run build && changeset publish",
     "start": "node dist/bin.js"
@@ -49,16 +53,11 @@
     "@changesets/cli": "^2.29.8",
     "@trivago/prettier-plugin-sort-imports": "^4.3.0",
     "@types/node": "^20.8.0",
-    "oxlint": "^0.11.0",
-    "prettier": "^3.1.0",
-    "prettier-plugin-packagejson": "^2.4.6",
-    "prettier-plugin-sort-json": "^3.1.0",
+    "oxfmt": "^0.28.0",
+    "oxlint": "^1.43.0",
     "typescript": "^5.2.0"
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/"
   }
 }

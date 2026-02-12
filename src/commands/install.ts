@@ -1,11 +1,12 @@
+import { promises as fs } from 'fs';
+
+import { multiselect, spinner } from '@clack/prompts';
+import pc from 'picocolors';
+
 import { PackageEntry } from '../types/config.js';
 import { configExists, readConfig } from '../utils/config.js';
 import { directoryExists } from '../utils/fs.js';
 import { downloadEntries } from '../utils/git.js';
-import { multiselect, spinner } from '@clack/prompts';
-
-import { promises as fs } from 'fs';
-import pc from 'picocolors';
 
 export async function installCommand(): Promise<void> {
   if (!(await configExists())) {
@@ -34,11 +35,14 @@ export async function installCommand(): Promise<void> {
   const newEntries: PackageEntry[] = [];
   const existingEntries: PackageEntry[] = [];
 
-  for (const entry of config.packages) {
-    if (await directoryExists(entry.target)) {
-      existingEntries.push(entry);
+  const existsResults = await Promise.all(
+    config.packages.map(entry => directoryExists(entry.target)),
+  );
+  for (let i = 0; i < config.packages.length; i++) {
+    if (existsResults[i]) {
+      existingEntries.push(config.packages[i]);
     } else {
-      newEntries.push(entry);
+      newEntries.push(config.packages[i]);
     }
   }
 
@@ -76,16 +80,16 @@ export async function installCommand(): Promise<void> {
     return;
   }
 
-  console.log(
-    pc.cyan(`\nInstalling ${toInstall.length} package(s)...\n`),
-  );
+  console.log(pc.cyan(`\nInstalling ${toInstall.length} package(s)...\n`));
 
   // Remove existing directories for overwrite entries
-  for (const entry of overwriteEntries) {
-    if (await directoryExists(entry.target)) {
-      await fs.rm(entry.target, { recursive: true, force: true });
-    }
-  }
+  await Promise.all(
+    overwriteEntries.map(async entry => {
+      if (await directoryExists(entry.target)) {
+        await fs.rm(entry.target, { recursive: true, force: true });
+      }
+    }),
+  );
 
   const s3 = spinner();
   s3.start(`Downloading ${toInstall.length} package(s)...`);

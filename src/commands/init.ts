@@ -1,9 +1,10 @@
-import { CONFIG_FILE, configExists } from '../utils/config.js';
-
 import { promises as fs } from 'fs';
 import { dirname, join } from 'path';
-import pc from 'picocolors';
 import { fileURLToPath } from 'url';
+
+import pc from 'picocolors';
+
+import { CONFIG_FILE, configExists } from '../utils/config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,7 +31,9 @@ export async function initCommand(): Promise<void> {
 
     for (const examplePath of possiblePaths) {
       try {
+        // eslint-disable-next-line no-await-in-loop -- sequential: try paths one by one, break on first success
         await fs.access(examplePath);
+        // eslint-disable-next-line no-await-in-loop
         await fs.copyFile(examplePath, CONFIG_FILE);
         exampleFound = true;
         break;

@@ -1,7 +1,8 @@
-import { FepullConfig } from '../types/config.js';
-
 import { promises as fs } from 'fs';
+
 import { parse, stringify } from 'yaml';
+
+import { FepullConfig } from '../types/config.js';
 
 export const CONFIG_FILE = 'fepull.config.yml';
 

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
+import { createRequire } from 'module';
+
+import { cancel, intro, isCancel, outro } from '@clack/prompts';
+import pc from 'picocolors';
+
 import { initCommand } from './commands/init.js';
 import { installCommand } from './commands/install.js';
-import { cancel, intro, isCancel, outro } from '@clack/prompts';
-
-import { createRequire } from 'module';
-import pc from 'picocolors';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');

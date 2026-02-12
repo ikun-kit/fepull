@@ -6,16 +6,18 @@ export async function copyDirectory(src: string, dest: string): Promise<void> {
 
   const entries = await fs.readdir(src, { withFileTypes: true });
 
-  for (const entry of entries) {
-    const srcPath = join(src, entry.name);
-    const destPath = join(dest, entry.name);
+  await Promise.all(
+    entries.map(async entry => {
+      const srcPath = join(src, entry.name);
+      const destPath = join(dest, entry.name);
 
-    if (entry.isDirectory()) {
-      await copyDirectory(srcPath, destPath);
-    } else {
-      await fs.copyFile(srcPath, destPath);
-    }
-  }
+      if (entry.isDirectory()) {
+        await copyDirectory(srcPath, destPath);
+      } else {
+        await fs.copyFile(srcPath, destPath);
+      }
+    }),
+  );
 }
 
 export async function directoryExists(path: string): Promise<boolean> {
